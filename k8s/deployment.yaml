@@ -2,8 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mario-deployment
+  namespace: mario
 spec:
-  replicas: 2  # You can adjust the number of replicas as needed
+  replicas: 2
   selector:
     matchLabels:
       app: mario
@@ -14,6 +15,6 @@ spec:
     spec:
       containers:
       - name: mario-container
-        image: kaali28/super-mario
+        image: abhishekpatade/super-mario:latest
         ports:
         - containerPort: 80
