@@ -22,7 +22,7 @@ pipeline {
             }
         }
 
-        stage('Verify Cluster Connection') {
+        stage('Configure kubectl') {
             steps {
                 sh '''
                 aws eks update-kubeconfig \

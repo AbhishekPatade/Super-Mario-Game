@@ -1,339 +1,618 @@
-# 🚀 Super Mario on AWS EKS using Terraform
+# Super Mario Application Deployment on AWS EKS using Jenkins
 
-This project demonstrates how to deploy the **Super Mario application** on **Amazon EKS (Elastic Kubernetes Service)** using **Terraform**, **Docker**, **AWS CLI**, and **Kubectl**.
+This project demonstrates a complete CI/CD pipeline for deploying the Super Mario application on Amazon Elastic Kubernetes Service (EKS) using Jenkins.
 
-## 📌 Prerequisites
-
-* AWS Account
-* EC2 Instance (Ubuntu or Amazon Linux)
-* IAM Role with Administrator Access
-* Docker
-* Terraform
-* AWS CLI
-* Kubectl
-* Git
+The infrastructure (EC2 and EKS cluster) is created manually. Once the environment is ready, Jenkins automates the complete deployment process, including pulling the Docker image, scanning it with Trivy, and deploying the application to Kubernetes.
 
 ---
 
-# 🏗️ Project Workflow
+# Prerequisites
 
-### Step 1: Launch EC2 Instance
-
-1. Login to AWS Console.
-2. Navigate to **EC2 Dashboard**.
-3. Click **Launch Instance**.
-4. Connect to the instance using **EC2 Instance Connect**.
-5. Attach an IAM Role to the EC2 instance.
+- AWS Account
+- GitHub Account
+- Docker Hub Account
+- IAM User with AdministratorAccess
+- Ubuntu 22.04 EC2 Instance
+- SSH Key Pair
 
 ---
 
-## Step 2: Install Required Tools
+# Tools Required
 
-### Update System
+- Java 17
+- Git
+- Jenkins
+- Docker
+- AWS CLI
+- kubectl
+- eksctl
+- Trivy
 
-```bash
-sudo apt update -y
+---
+
+# Project Structure
+
+```
+Super-Mario-Game
+│
+├── Jenkinsfile
+├── setup.sh
+├── README.md
+│
+└── k8s
+    ├── namespace.yaml
+    ├── deployment.yaml
+    └── service.yaml
 ```
 
 ---
 
-## Install Docker
+# Launch EC2 (Ubuntu 22.04)
 
-### Ubuntu
+Create an Ubuntu 22.04 EC2 instance.
+
+Recommended Configuration
+
+- AMI : Ubuntu Server 22.04 LTS
+- Instance Type : t2.large
+- Storage : 30 GB
+
+Configure the Security Group.
+
+| Port | Purpose |
+|------|----------|
+| 22 | SSH |
+| 80 | Application |
+| 8080 | Jenkins |
+
+Connect to the instance.
 
 ```bash
-sudo apt install docker.io -y
-sudo systemctl start docker
-sudo usermod -aG docker ubuntu
-newgrp docker
+ssh -i <your-key.pem> ubuntu@<Public-IP>
+```
+
+---
+
+# Clone Repository
+
+Clone the project repository.
+
+```bash
+git clone https://github.com/<your-username>/Super-Mario-Game.git
+```
+
+Move inside the project.
+
+```bash
+cd Super-Mario-Game
+```
+
+---
+
+# Install Required Tools
+
+Run the setup script.
+
+```bash
+chmod +x setup.sh
+```
+
+```bash
+./setup.sh
+```
+
+The script installs
+
+- Java
+- Jenkins
+- Docker
+- Git
+- AWS CLI
+- kubectl
+- eksctl
+- Trivy
+
+Verify the installation.
+
+```bash
+java -version
 docker --version
-```
-
-### Amazon Linux
-
-```bash
-sudo yum install docker -y
-sudo systemctl start docker
-sudo usermod -aG docker ec2-user
-newgrp docker
-docker --version
-```
-
----
-
-## Install Terraform
-
-### Ubuntu
-
-```bash
-wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
-
-sudo apt update
-sudo apt install terraform -y
-
-terraform version
-```
-
-### Amazon Linux
-
-```bash
-sudo yum install -y yum-utils shadow-utils
-
-sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo
-
-sudo yum install terraform -y
-
-terraform version
-```
-
----
-
-## Install AWS CLI
-
-```bash
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-
-sudo apt install unzip -y
-
-unzip awscliv2.zip
-
-sudo ./aws/install
-
 aws --version
-```
-
----
-
-## Install Kubectl
-
-### Download Kubectl
-
-```bash
-curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-```
-
-### Install Kubectl
-
-```bash
-sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-```
-
-### Verify Installation
-
-```bash
 kubectl version --client
+eksctl version
+trivy --version
 ```
 
 ---
 
-# 🔐 Step 3: Create IAM Role
+# Configure AWS CLI
 
-Create a new IAM Role with the following permissions:
+Configure your AWS credentials.
 
-* AdministratorAccess
+```bash
+aws configure
+```
 
-Role Name:
+Verify.
 
-```text
-role-ec2
+```bash
+aws sts get-caller-identity
 ```
 
 ---
 
-# 🔗 Step 4: Attach IAM Role to EC2
+# Create Amazon EKS Cluster
 
-1. Open EC2 Dashboard.
-2. Select your EC2 Instance.
-3. Click:
+Create the EKS cluster.
 
-```text
-Actions → Security → Modify IAM Role
+```bash
+eksctl create cluster \
+--name mario-cluster \
+--region ap-south-1 \
+--nodegroup-name worker-nodes \
+--node-type t3.medium \
+--nodes 2 \
+--managed
 ```
 
-4. Select:
-
-```text
-role-ec2
-```
-
-5. Click **Update IAM Role**.
+Cluster creation takes approximately **15–20 minutes**.
 
 ---
 
-# ☁️ Step 5: Build AWS EKS Infrastructure Using Terraform
+# Verify EKS Cluster
 
-## Install Git
-
-```bash
-sudo apt install git -y
-```
-
-## Clone Repository
+Verify the cluster.
 
 ```bash
-git clone https://github.com/Alpesh-Rajendra/Project-Super-Mario.git
-
-cd Project-Super-Mario/EKS-TF
+eksctl get cluster
 ```
 
----
-
-## Initialize Terraform
-
-```bash
-terraform init
-```
-
-## Validate Terraform Code
-
-```bash
-terraform plan
-```
-
-## Create Infrastructure
-
-```bash
-terraform apply --auto-approve
-```
-
----
-
-## Configure EKS Cluster Access
-
-```bash
-aws eks update-kubeconfig \
---name EKS_CLOUD \
---region ap-southeast-1
-```
-
-Verify Cluster:
+Verify worker nodes.
 
 ```bash
 kubectl get nodes
 ```
 
----
-
-# 🚀 Step 6: Deploy Application on EKS
-
-Move to Kubernetes Manifest Directory:
+Verify Kubernetes.
 
 ```bash
-cd ..
+kubectl cluster-info
 ```
 
-## Create Deployment
+At this point, the infrastructure setup is complete.
+
+The remaining deployment process is handled automatically by the Jenkins CI/CD pipeline.
+
+
+# Configure Jenkins
+
+Open Jenkins in your browser.
+
+```
+http://<EC2-Public-IP>:8080
+```
+
+Unlock Jenkins.
 
 ```bash
-kubectl apply -f deployment.yaml
+sudo cat /var/lib/jenkins/secrets/initialAdminPassword
 ```
 
-## Create Service
+Copy the password and paste it into the Jenkins setup page.
 
-```bash
-kubectl apply -f service.yaml
-```
+Click **Install Suggested Plugins**.
 
----
+Create an Administrator account.
 
-## Verify Resources
-
-```bash
-kubectl get all
-
-kubectl get svc mario-service
-```
-
-Example Output:
-
-```bash
-NAME            TYPE           EXTERNAL-IP
-mario-service   LoadBalancer   a1b2c3d4.amazonaws.com
-```
+Jenkins is now ready to use.
 
 ---
 
-## Access Application
+# Install Required Jenkins Plugins
 
-1. Copy the Load Balancer DNS Name from:
+Go to
 
-```bash
-kubectl get svc mario-service
+```
+Manage Jenkins
+
+↓
+
+Plugins
+
+↓
+
+Available Plugins
 ```
 
-2. Paste it into your browser.
+Install the following plugins.
 
-🎮 Super Mario Game will be available.
+- Docker
+- Docker Pipeline
+- Pipeline
+- Git
+- GitHub
+- Credentials Binding
+- Pipeline Stage View
+- Workspace Cleanup
+- SSH Agent
+
+Restart Jenkins after installing the plugins.
+
+```
+http://<EC2-Public-IP>:8080/restart
+```
 
 ---
 
-# 📊 Architecture
+# Configure Docker for Jenkins
+
+Allow Jenkins to access Docker.
+
+```bash
+sudo usermod -aG docker jenkins
+```
+
+```bash
+sudo usermod -aG docker ubuntu
+```
+
+```bash
+sudo chmod 777 /var/run/docker.sock
+```
+
+Restart Jenkins.
+
+```bash
+sudo systemctl restart jenkins
+```
+
+Verify Docker access.
+
+```bash
+docker ps
+```
+
+---
+
+# Configure Jenkins Credentials
+
+Go to
+
+```
+Manage Jenkins
+
+↓
+
+Credentials
+
+↓
+
+System
+
+↓
+
+Global Credentials
+
+↓
+
+Add Credentials
+```
+
+### Docker Hub Credentials
+
+Select
+
+```
+Kind : Username with Password
+```
+
+Fill the details.
+
+```
+Username : <DockerHub Username>
+
+Password : <DockerHub Password>
+
+ID : docker-cred
+```
+
+Click **Create**.
+
+---
+
+### AWS Credentials (Optional)
+
+If your EC2 instance is **not attached to an IAM Role**, add AWS credentials.
+
+```
+Kind : AWS Credentials
+```
+
+Provide
+
+- Access Key
+- Secret Key
+
+Credential ID
+
+```
+aws-cred
+```
+
+> **Note:** If the EC2 instance already has an IAM Role with the required permissions, this step can be skipped.
+
+---
+
+# Create Jenkins Pipeline Job
+
+From the Jenkins Dashboard,
+
+```
+New Item
+
+↓
+
+Enter Item Name
+
+↓
+
+Super-Mario-CICD
+
+↓
+
+Pipeline
+
+↓
+
+OK
+```
+
+Under **Pipeline**
+
+```
+Definition
+
+↓
+
+Pipeline script from SCM
+```
+
+SCM
+
+```
+Git
+```
+
+Repository URL
+
+```
+https://github.com/<your-github-username>/Super-Mario-Game.git
+```
+
+Branch
+
+```
+*/main
+```
+
+Script Path
+
+```
+Jenkinsfile
+```
+
+Click **Save**.
+
+
+# Configure GitHub Webhook
+
+Open your GitHub repository.
+
+```
+Repository
+
+↓
+
+Settings
+
+↓
+
+Webhooks
+
+↓
+
+Add Webhook
+```
+
+Configure the webhook.
+
+**Payload URL**
+
+```
+http://<EC2-Public-IP>:8080/github-webhook/
+```
+
+**Content Type**
+
+```
+application/json
+```
+
+**Which events would you like to trigger this webhook?**
+
+```
+Just the push event
+```
+
+Click **Add Webhook**.
+
+---
+
+# Build the Pipeline
+
+Go to the Jenkins Dashboard.
+
+```
+Super-Mario-CICD
+
+↓
+
+Build Now
+```
+
+Click on the build number.
+
+```
+#1
+
+↓
+
+Console Output
+```
+
+You should see the pipeline executing successfully.
+
+---
+
+# Jenkins Pipeline Workflow
+
+The pipeline performs the following tasks automatically.
+
+```
+Clean Workspace
+
+↓
+
+Clone GitHub Repository
+
+↓
+
+Pull Docker Image
+
+↓
+
+Scan Docker Image using Trivy
+
+↓
+
+Configure kubectl
+
+↓
+
+Create Kubernetes Namespace
+
+↓
+
+Deploy Application
+
+↓
+
+Create LoadBalancer Service
+
+↓
+
+Verify Deployment
+```
+
+No manual Kubernetes deployment is required.
+
+---
+
+# Verify Deployment
+
+Check the running Pods.
+
+```bash
+kubectl get pods -n mario
+```
+
+Check the Deployment.
+
+```bash
+kubectl get deployment -n mario
+```
+
+Check the Service.
+
+```bash
+kubectl get svc -n mario
+```
+
+Example Output
 
 ```text
-Developer
-    │
-    ▼
-EC2 Instance
-    │
-    ├── Terraform
-    ├── AWS CLI
-    └── Kubectl
-    │
-    ▼
-Amazon EKS Cluster
-    │
-    ▼
-Deployment
-    │
-    ▼
-Service (LoadBalancer)
-    │
-    ▼
-Super Mario Application
+NAME            TYPE           EXTERNAL-IP
+mario-service   LoadBalancer   a1b2c3d4.ap-south-1.elb.amazonaws.com
 ```
 
 ---
 
-# 🧹 Destroy Infrastructure
+# Access the Application
 
-To avoid AWS charges, destroy all resources after testing:
+Copy the **EXTERNAL-IP** of the LoadBalancer.
+
+Open your browser.
+
+```
+http://<EXTERNAL-IP>
+```
+
+The Super Mario application should now be accessible.
+
+---
+
+# Project Workflow
+
+```
+Developer
+
+↓
+
+Push Code to GitHub
+
+↓
+
+GitHub Webhook
+
+↓
+
+Jenkins Pipeline Triggered
+
+↓
+
+Checkout Repository
+
+↓
+
+Pull Docker Image
+
+↓
+
+Trivy Security Scan
+
+↓
+
+Configure kubectl
+
+↓
+
+Deploy to Amazon EKS
+
+↓
+
+Application Running on Kubernetes
+```
+
+---
+
+# Cleanup
+
+Delete the EKS Cluster.
 
 ```bash
-terraform destroy --auto-approve
+eksctl delete cluster --name mario-cluster --region ap-south-1
 ```
 
----
+Terminate the EC2 instance from the AWS Console to avoid unnecessary charges.
 
-# 📸 Final Output
-
-✅ EKS Cluster Created
-
-✅ Kubernetes Deployment Created
-
-✅ LoadBalancer Service Created
-
-✅ Super Mario Application Running
-
----
-
-## 🛠️ Tech Stack
-
-* AWS EC2
-* Amazon EKS
-* Terraform
-* Docker
-* Kubernetes
-* AWS CLI
-* Kubectl
-* Git
-
----
-
-## ⭐ Author
-
-Abhishek Santosh Patade
-
-If you found this project useful, give it a ⭐ on GitHub.
 
